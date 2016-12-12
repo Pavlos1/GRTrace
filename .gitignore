@@ -1,0 +1,8 @@
+taints.txt
+out.txt
+*.out
+*.swp
+*~
+obj-intel64/
+obj-ia32/
+parsers/bin/
