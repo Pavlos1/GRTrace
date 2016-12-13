@@ -20,8 +20,10 @@ bool target_file_opened = false;
 char * target_file;
 
 ADDRINT target_fd;
-std::map<ADDRINT, std::set<int> *> * taints = new std::map<ADDRINT, std::set<int> *>();
-std::map<REG, std::set<int> *> * reg_taints = new std::map<REG, std::set<int> *>();
+std::map<ADDRINT, std::set<int> *> * taints
+    = new std::map<ADDRINT, std::set<int> *>();
+std::map<REG, std::set<int> *> * reg_taints
+    = new std::map<REG, std::set<int> *>();
 
 std::set<int> * operand_taints = new std::set<int>();
 
@@ -50,7 +52,9 @@ VOID record_ins_call(VOID * ptr) {
     fprintf(stderr, "%p: CALL\n", ptr);
 }
 
-VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number, ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3, ADDRINT arg4, ADDRINT arg5) {
+VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
+    ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3, ADDRINT arg4,
+        ADDRINT arg5) {
     switch (number) {
         case SYS_read:
             if (target_file_opened && (arg0 == target_fd)) {
@@ -76,14 +80,16 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number, ADDRINT arg0, ADD
             break;
         case SYS_write:
             if (target_file_opened && (arg0 == target_fd)) {
-                fprintf(stderr, "Application tried to write to input file. Nope. Nope. Nope. Nope. Nope. Nope. Nope.\n");
+                fprintf(stderr, "Application tried to write to input file.
+                    Nope. Nope. Nope. Nope. Nope. Nope. Nope.\n");
                 exit(1);
             }
             handler = DO_NOTHING;
             break;
         case SYS_open:
             if (strstr((char *) arg0, target_file)) {
-                fprintf(stderr, "Trying to open what looks like our target file (%s)... ", (char *) arg0);
+                fprintf(stderr, "Trying to open what looks like our
+                    target file (%s)... ", (char *) arg0);
                 handler = CHECK_IF_TARGET_FILE_OPENED;
             } else {
                 handler = DO_NOTHING;
@@ -134,7 +140,8 @@ VOID clear_operand_taints() {
     operand_taints->clear();
 }
 
-VOID record_ins_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode, VOID * in_ptr) {
+VOID record_ins_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
+    VOID * in_ptr) {
     if (taints->find((ADDRINT) in_ptr) != taints->end()) {
         if ((*taints)[(ADDRINT) in_ptr] != NULL) {
             for (auto offset : *((*taints)[(ADDRINT) in_ptr])) {
@@ -144,7 +151,8 @@ VOID record_ins_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode, VOID * in
     }
 }
 
-VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode, REG reg) {
+VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
+    REG reg) {
     reg = standardize_reg(reg);
 
     // If instruction is PUSH/POP/CALL/RET, we don't want to propagate the RSP
@@ -167,7 +175,8 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode, REG r
     }
 }
 
-VOID record_ins_write(VOID * ins_ptr, CATEGORY category, OPCODE opcode, VOID * out_ptr) {
+VOID record_ins_write(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
+    VOID * out_ptr) {
     if (taints->find((ADDRINT) out_ptr) == taints->end()) {
         (*taints)[(ADDRINT) out_ptr] = new std::set<int>();
     }
@@ -191,7 +200,8 @@ VOID record_ins_write(VOID * ins_ptr, CATEGORY category, OPCODE opcode, VOID * o
     }
 }
 
-VOID record_ins_reg_write(VOID * ins_ptr, CATEGORY category, OPCODE opcode, REG reg) {
+VOID record_ins_reg_write(VOID * ins_ptr, CATEGORY category,
+    OPCODE opcode, REG reg) {
     reg = standardize_reg(reg);
 
     // If the instruction is PUSH/POP/CALL/RET, we do not want to modify
@@ -215,17 +225,15 @@ VOID record_ins_reg_write(VOID * ins_ptr, CATEGORY category, OPCODE opcode, REG 
         return;
     }
 
-    //fprintf(stderr, "Clearing taints for %s\n", REG_StringShort(reg).c_str());
     (*reg_taints)[reg]->clear();
 
     for (auto offset : *operand_taints) {
-        //fprintf(stderr, "Tainting %s with %d\n", REG_StringShort(reg).c_str(), offset);
         (*reg_taints)[reg]->insert(offset);
     }
 }
 
-VOID SyscallEntry(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std, VOID *v)
-{
+VOID SyscallEntry(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std,
+    VOID *v) {
     record_ins_syscall_before((VOID *) PIN_GetContextReg(ctxt, REG_INST_PTR),
         PIN_GetSyscallNumber(ctxt, std),
         PIN_GetSyscallArgument(ctxt, std, 0),
@@ -236,20 +244,25 @@ VOID SyscallEntry(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std, VOI
         PIN_GetSyscallArgument(ctxt, std, 5));
 }
 
-VOID SyscallExit(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std, VOID *v)
-{
-    record_ins_syscall_after((VOID *) PIN_GetContextReg(ctxt, REG_INST_PTR), PIN_GetSyscallReturn(ctxt, std));
+VOID SyscallExit(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std,
+    VOID *v) {
+    record_ins_syscall_after((VOID *) PIN_GetContextReg(ctxt, REG_INST_PTR),
+        PIN_GetSyscallReturn(ctxt, std));
 }
 
 VOID Instruction(INS ins, VOID * v) {
-    // Handle SYSCALL/0x80 interrupt to check for I/O taints originating from the target file
+    // Handle SYSCALL/0x80 interrupt to check for I/O taints originating
+    // from the target file
     if (INS_IsSyscall(ins) && INS_HasFallThrough(ins)) {
         // Executed before control is handed over to the kernel
-        INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR) record_ins_syscall_before, IARG_INST_PTR,
-            IARG_SYSCALL_NUMBER, IARG_SYSARG_VALUE, 0, IARG_SYSARG_VALUE, 1, IARG_SYSARG_VALUE, 2,
-                IARG_SYSARG_VALUE, 3, IARG_SYSARG_VALUE, 4, IARG_SYSARG_VALUE, 5, IARG_END);
+        INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+            (AFUNPTR) record_ins_syscall_before, IARG_INST_PTR,
+            IARG_SYSCALL_NUMBER, IARG_SYSARG_VALUE, 0, IARG_SYSARG_VALUE, 1,
+            IARG_SYSARG_VALUE, 2, IARG_SYSARG_VALUE, 3, IARG_SYSARG_VALUE, 4,
+            IARG_SYSARG_VALUE, 5, IARG_END);
         // Executed after kernel returns
-        INS_InsertPredicatedCall(ins, IPOINT_AFTER, (AFUNPTR) record_ins_syscall_after, IARG_INST_PTR,
+        INS_InsertPredicatedCall(ins, IPOINT_AFTER,
+            (AFUNPTR) record_ins_syscall_after, IARG_INST_PTR,
             IARG_SYSRET_VALUE, IARG_END);
 
     } else {
@@ -316,14 +329,16 @@ VOID Instruction(INS ins, VOID * v) {
 VOID Fini(INT32 code, VOID * v) {
     fprintf(stderr, "Writing taints to file... ");
     FILE * fp = fopen("taints.txt", "w");
-    for (auto iterator = reg_taints->begin(); iterator != reg_taints->end(); iterator++) {
+    for (auto iterator = reg_taints->begin(); iterator != reg_taints->end();
+        iterator++) {
         fprintf(fp, "%s: ", REG_StringShort(iterator->first).c_str());
         for (auto offset : *(iterator->second)) {
             fprintf(fp, "%d, ", offset);
         }
         fprintf(fp, "\n");
     }
-    for (auto iterator = taints->begin(); iterator != taints->end(); iterator++) {
+    for (auto iterator = taints->begin(); iterator != taints->end();
+        iterator++) {
         fprintf(fp, "%lx: ", iterator->first);
         for (auto offset : *(iterator->second)) {
             fprintf(fp, "%d, ", offset);
@@ -334,12 +349,14 @@ VOID Fini(INT32 code, VOID * v) {
     fprintf(stderr, "done.\n");
 
     delete operand_taints;
-    for (auto iterator = taints->begin(); iterator != taints->end(); iterator++) {
+    for (auto iterator = taints->begin(); iterator != taints->end();
+        iterator++) {
         delete iterator->second;
     }
     delete taints;
 
-    for (auto iterator = reg_taints->begin(); iterator != reg_taints->end(); iterator++) {
+    for (auto iterator = reg_taints->begin(); iterator != reg_taints->end();
+        iterator++) {
         delete iterator->second;
     }
     delete reg_taints;
