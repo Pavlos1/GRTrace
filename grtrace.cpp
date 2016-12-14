@@ -80,7 +80,7 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
             break;
         case SYS_write:
             if (target_file_opened && (arg0 == target_fd)) {
-                fprintf(stderr, "Application tried to write to input file.
+                fprintf(stderr, "Application tried to write to input file.\
                     Nope. Nope. Nope. Nope. Nope. Nope. Nope.\n");
                 exit(1);
             }
@@ -88,7 +88,7 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
             break;
         case SYS_open:
             if (strstr((char *) arg0, target_file)) {
-                fprintf(stderr, "Trying to open what looks like our
+                fprintf(stderr, "Trying to open what looks like our\
                     target file (%s)... ", (char *) arg0);
                 handler = CHECK_IF_TARGET_FILE_OPENED;
             } else {
@@ -164,7 +164,7 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
     // If the instruction is a conditional move, then due to us calling
     // INS_InsertPredicatedCall it will noy be instrumented unless the
     // condition was met. Hence, the taint in FLAGS should not be propagated.
-    if (/*(category == XED_CATEGORY_CMOV) &&*/ (reg == REG_GFLAGS)) return;
+    if ((category == XED_CATEGORY_CMOV) && (reg == REG_GFLAGS)) return;
 
     if (reg_taints->find(reg) != reg_taints->end()) {
         if ((*reg_taints)[reg] != NULL) {
