@@ -135,11 +135,11 @@ VOID record_ins_syscall_after(VOID * ins_ptr, ADDRINT ret) {
     }
 }
 
-VOID clear_operand_taints() {
+VOID clear_operand_taints(VOID * ins_ptr) {
     operand_taints->clear();
 }
 
-VOID clear_reg_taint(REG reg) {
+VOID clear_reg_taint(VOID * ins_ptr, REG reg) {
     //fprintf(stderr, "Clearing taints for %s\n", REG_StringShort(reg).c_str());
     reg = standardize_reg(reg);
 
@@ -242,6 +242,40 @@ VOID record_ins_reg_write(VOID * ins_ptr, CATEGORY category,
     }
 }
 
+VOID record_ins_xchg_reg_reg(VOID * ins_ptr, REG reg1, REG reg2) {
+    if (reg_taints->find(reg1) == reg_taints->end()) {
+        if (reg_taints->find(reg2) != reg_taints->end()) {
+            (*reg_taints)[reg1] = (*reg_taints)[reg2];
+        }
+        reg_taints->erase(reg2);
+    } else {
+        std::set<int> * tmp = (*reg_taints)[reg1];
+        if (reg_taints->find(reg2) == reg_taints->end()) {
+            reg_taints->erase(reg1);
+        } else {
+            (*reg_taints)[reg1] = (*reg_taints)[reg2];
+        }
+        (*reg_taints)[reg2] = tmp;
+    }
+}
+
+VOID record_ins_xchg_reg_mem(VOID * ins_ptr, REG reg, VOID * mem) {
+    if (reg_taints->find(reg) == reg_taints->end()) {
+        if (taints->find((ADDRINT) mem) != taints->end()) {
+            (*reg_taints)[reg] = (*taints)[(ADDRINT) mem];
+        }
+        taints->erase((ADDRINT) mem);
+    } else {
+        std::set<int> * tmp = (*reg_taints)[reg];
+        if (taints->find((ADDRINT) mem) == taints->end()) {
+            reg_taints->erase(reg);
+        } else {
+            (*reg_taints)[reg] = (*taints)[(ADDRINT) mem];
+        }
+        (*taints)[(ADDRINT) mem] = tmp;
+    }
+}
+
 VOID SyscallEntry(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std,
     VOID *v) {
     record_ins_syscall_before((VOID *) PIN_GetContextReg(ctxt, REG_INST_PTR),
@@ -283,12 +317,29 @@ VOID Instruction(INS ins, VOID * v) {
                 && (INS_OperandReg(ins, 0) == INS_OperandReg(ins, 1))) {
 
                 INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
-                    (AFUNPTR) clear_reg_taint, IARG_UINT32,
-                    INS_OperandReg(ins, 0), IARG_END);
+                    (AFUNPTR) clear_reg_taint, IARG_INST_PTR,
+                    IARG_UINT32, INS_OperandReg(ins, 0), IARG_END);
                 INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
-                    (AFUNPTR) clear_reg_taint, IARG_UINT32, REG_GFLAGS,
-                    IARG_END);
+                    (AFUNPTR) clear_reg_taint, IARG_INST_PTR,
+                    IARG_UINT32, REG_GFLAGS, IARG_END);
 
+    // TODO: CMPXCHG? (XADD should hypothetically function as normal)
+    } else if (INS_Opcode(ins) == XED_ICLASS_XCHG) {
+
+        if (INS_OperandIsReg(ins, 0) && INS_OperandIsReg(ins, 1)) {
+            INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+                (AFUNPTR) record_ins_xchg_reg_reg, IARG_INST_PTR,
+                IARG_UINT32, INS_OperandReg(ins, 0),
+                IARG_UINT32, INS_OperandReg(ins, 1), IARG_END);
+
+        } else {
+            // This should work with both (REG, MEM) and (MEM, REG)
+            INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+                (AFUNPTR) record_ins_xchg_reg_mem, IARG_INST_PTR,
+                IARG_UINT32, INS_OperandReg(ins, 0),
+                IARG_MEMORYOP_EA, 0, IARG_END);
+        }
+    
     } else {
         // Handle memory I/O to check for taint propogation
         //
@@ -302,7 +353,7 @@ VOID Instruction(INS ins, VOID * v) {
 
         // Clear taints for current instruction
         INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
-            (AFUNPTR) clear_operand_taints, IARG_END);
+            (AFUNPTR) clear_operand_taints, IARG_INST_PTR, IARG_END);
 
         // Populate operand_taints with taints from read memory
         for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
