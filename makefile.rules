@@ -1,1 +1,1 @@
-TOOL_ROOTS := grtrace
+TOOL_ROOTS := grtrace pinatrace
