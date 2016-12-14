@@ -34,6 +34,11 @@ _start:
     movq $1, %rdx
     syscall
 
+    movb v1, %r10b
+    xor %r10, %r10
+    movb v1, %r10b
+    sub %r10, %r10
+
 exit_success:
     movq $60, %rax
     movq $0, %rdi

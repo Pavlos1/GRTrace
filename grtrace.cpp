@@ -58,7 +58,6 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
     switch (number) {
         case SYS_read:
             if (target_file_opened && (arg0 == target_fd)) {
-                //fprintf(stderr, "Target file was read. Updating taints.\n");
                 int curr = lseek(target_fd, 0, SEEK_CUR);
                 int end = lseek(target_fd, 0, SEEK_END);
                 lseek(target_fd, curr, SEEK_SET);
@@ -140,6 +139,19 @@ VOID clear_operand_taints() {
     operand_taints->clear();
 }
 
+VOID clear_reg_taint(REG reg) {
+    //fprintf(stderr, "Clearing taints for %s\n", REG_StringShort(reg).c_str());
+    reg = standardize_reg(reg);
+
+    if (reg_taints->find(reg) != reg_taints->end()) {
+        if ((*reg_taints)[reg] != NULL) {
+            delete (*reg_taints)[reg];
+        }
+
+        reg_taints->erase(reg);
+    }
+}
+
 VOID record_ins_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
     VOID * in_ptr) {
     if (taints->find((ADDRINT) in_ptr) != taints->end()) {
@@ -191,11 +203,9 @@ VOID record_ins_write(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
         return;
     }
 
-    //fprintf(stderr, "Clearing taints for %p\n", out_ptr);
     (*taints)[(ADDRINT) out_ptr]->clear();
 
     for (auto offset : *operand_taints) {
-        //fprintf(stderr, "Tainting %p with %d\n", out_ptr, offset);
         (*taints)[(ADDRINT) out_ptr]->insert(offset);
     }
 }
@@ -264,6 +274,20 @@ VOID Instruction(INS ins, VOID * v) {
         INS_InsertPredicatedCall(ins, IPOINT_AFTER,
             (AFUNPTR) record_ins_syscall_after, IARG_INST_PTR,
             IARG_SYSRET_VALUE, IARG_END);
+
+    // Specifically handle the case of `XOR %REG, %REG` and `SUB %REG, %REG`
+    // Both %REG(=0) and %RFLAGS are now deterministic, and thus not tainted
+    } else if (((INS_Opcode(ins) == XED_ICLASS_XOR)
+        || (INS_Opcode(ins) == XED_ICLASS_SUB))
+            && INS_OperandIsReg(ins, 0) && INS_OperandIsReg(ins, 1)
+                && (INS_OperandReg(ins, 0) == INS_OperandReg(ins, 1))) {
+
+                INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+                    (AFUNPTR) clear_reg_taint, IARG_UINT32,
+                    INS_OperandReg(ins, 0), IARG_END);
+                INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+                    (AFUNPTR) clear_reg_taint, IARG_UINT32, REG_GFLAGS,
+                    IARG_END);
 
     } else {
         // Handle memory I/O to check for taint propogation
