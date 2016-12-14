@@ -16,7 +16,7 @@ This will trace the execution of ghostscript on a sample PDF file.
 Alternatively, you can specify the parser and input file.
 
 ```bash
-./run $PARGER $FILE
+./run $PARSER $FILE
 # e.g.
 ./run parsers/bin/asm_branch_taint tests/pdf_valid.pdf
 ```
