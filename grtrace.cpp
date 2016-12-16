@@ -172,10 +172,11 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
         || (category == XED_CATEGORY_CALL) || (category == XED_CATEGORY_RET))
             && (reg == REG_STACK_PTR)) return;
 
-    // If the instruction is a conditional move, then due to us calling
-    // INS_InsertPredicatedCall it will noy be instrumented unless the
+    // If the instruction is a conditional instruction, then due to us calling
+    // INS_InsertPredicatedCall it will not be instrumented unless the
     // condition was met. Hence, the taint in FLAGS should not be propagated.
-    if ((category == XED_CATEGORY_CMOV) && (reg == REG_GFLAGS)) return;
+    // Conditional jumps are excepted since we want to know about branches.
+    if ((category != XED_CATEGORY_COND_BR) && (reg == REG_GFLAGS)) return;
 
     if (reg_taints->find(reg) != reg_taints->end()) {
         if ((*reg_taints)[reg] != NULL) {
