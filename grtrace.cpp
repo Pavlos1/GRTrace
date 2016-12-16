@@ -79,16 +79,16 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
             break;
         case SYS_write:
             if (target_file_opened && (arg0 == target_fd)) {
-                fprintf(stderr, "Application tried to write to input file.\
-                    Nope. Nope. Nope. Nope. Nope. Nope. Nope.\n");
+                fprintf(stderr, "Application tried to write to input file."
+                    "Nope. Nope. Nope. Nope. Nope. Nope. Nope.\n");
                 exit(1);
             }
             handler = DO_NOTHING;
             break;
         case SYS_open:
             if (strstr((char *) arg0, target_file)) {
-                fprintf(stderr, "Trying to open what looks like our\
-                    target file (%s)... ", (char *) arg0);
+                fprintf(stderr, "Trying to open what looks like our"
+                    "target file (%s)... ", (char *) arg0);
                 handler = CHECK_IF_TARGET_FILE_OPENED;
             } else {
                 handler = DO_NOTHING;
@@ -140,7 +140,6 @@ VOID clear_operand_taints(VOID * ins_ptr) {
 }
 
 VOID clear_reg_taint(VOID * ins_ptr, REG reg) {
-    //fprintf(stderr, "Clearing taints for %s\n", REG_StringShort(reg).c_str());
     reg = standardize_reg(reg);
 
     if (reg_taints->find(reg) != reg_taints->end()) {
