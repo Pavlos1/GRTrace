@@ -178,6 +178,11 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
     // Conditional jumps are excepted since we want to know about branches.
     if ((category != XED_CATEGORY_COND_BR) && (reg == REG_GFLAGS)) return;
 
+    // I don't really have a proper justification for this, other than that
+    // the assembly trace does a lot of MOV/LEA on memory that is specified
+    // relative to (%rip)
+    if (reg == REG_INST_PTR) return;
+
     if (reg_taints->find(reg) != reg_taints->end()) {
         if ((*reg_taints)[reg] != NULL) {
             for (auto offset : *((*reg_taints)[reg])) {
