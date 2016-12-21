@@ -36,6 +36,11 @@ _start:
     movb v2, %r11b
     xchg %r10, %r11
 
+    # Close the file
+    movq $3, %rax
+    movq fd, %rdi
+    syscall
+
 exit_success:
     movq $60, %rax
     movq $0, %rdi
