@@ -152,11 +152,13 @@ VOID clear_reg_taint(VOID * ins_ptr, REG reg) {
 }
 
 VOID record_ins_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
-    VOID * in_ptr) {
-    if (taints->find((ADDRINT) in_ptr) != taints->end()) {
-        if ((*taints)[(ADDRINT) in_ptr] != NULL) {
-            for (auto offset : *((*taints)[(ADDRINT) in_ptr])) {
-                operand_taints->insert(offset);
+    char * in_ptr, UINT32 length) {
+    for (UINT32 i=0; i<length; i++) {
+        if (taints->find((ADDRINT) (in_ptr+i)) != taints->end()) {
+            if ((*taints)[(ADDRINT) (in_ptr+i)] != NULL) {
+                for (auto offset : *((*taints)[(ADDRINT) (in_ptr+i)])) {
+                    operand_taints->insert(offset);
+                }
             }
         }
     }
@@ -193,25 +195,27 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
 }
 
 VOID record_ins_write(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
-    VOID * out_ptr) {
-    if (taints->find((ADDRINT) out_ptr) == taints->end()) {
-        (*taints)[(ADDRINT) out_ptr] = new std::set<int>();
-    }
-    if ((*taints)[(ADDRINT) out_ptr] == NULL) {
-        (*taints)[(ADDRINT) out_ptr] = new std::set<int>();
-    }
+    char * out_ptr, UINT32 length) {
+    for (UINT32 i=0; i<length; i++) {
+        if (taints->find((ADDRINT) (out_ptr+i)) == taints->end()) {
+            (*taints)[(ADDRINT) (out_ptr+i)] = new std::set<int>();
+        }
+        if ((*taints)[(ADDRINT) (out_ptr+i)] == NULL) {
+            (*taints)[(ADDRINT) (out_ptr+i)] = new std::set<int>();
+        }
 
-    // TODO: A better way of doing this
-    if (operand_taints->empty()) {
-        delete (*taints)[(ADDRINT) out_ptr];
-        taints->erase((ADDRINT) out_ptr);
-        return;
-    }
+        // TODO: A better way of doing this
+        if (operand_taints->empty()) {
+            delete (*taints)[(ADDRINT) (out_ptr+i)];
+            taints->erase((ADDRINT) (out_ptr+i));
+            return;
+        }
 
-    (*taints)[(ADDRINT) out_ptr]->clear();
+        (*taints)[(ADDRINT) (out_ptr+i)]->clear();
 
-    for (auto offset : *operand_taints) {
-        (*taints)[(ADDRINT) out_ptr]->insert(offset);
+        for (auto offset : *operand_taints) {
+            (*taints)[(ADDRINT) (out_ptr+i)]->insert(offset);
+        }
     }
 }
 
@@ -329,6 +333,7 @@ VOID Instruction(INS ins, VOID * v) {
                     IARG_UINT32, REG_GFLAGS, IARG_END);
 
     // TODO: CMPXCHG? (XADD should hypothetically function as normal)
+    // TODO: Make this word with multi-byte variables
     } else if (INS_Opcode(ins) == XED_ICLASS_XCHG) {
 
         if (INS_OperandIsReg(ins, 0) && INS_OperandIsReg(ins, 1)) {
@@ -368,6 +373,7 @@ VOID Instruction(INS ins, VOID * v) {
                     IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
                     IARG_UINT32, INS_Opcode(ins),
                     IARG_MEMORYOP_EA, memOp,
+                    IARG_UINT32, INS_MemoryOperandSize(ins, memOp),
                     IARG_END);
             }
         }
@@ -390,6 +396,7 @@ VOID Instruction(INS ins, VOID * v) {
                     IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
                     IARG_UINT32, INS_Opcode(ins),
                     IARG_MEMORYOP_EA, memOp,
+                    IARG_UINT32, INS_MemoryOperandSize(ins, memOp),
                     IARG_END);
             }
         }
