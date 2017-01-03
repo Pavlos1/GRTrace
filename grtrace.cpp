@@ -88,7 +88,7 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
         case SYS_open:
             if (strstr((char *) arg0, target_file)) {
                 fprintf(stderr, "Trying to open what looks like our"
-                    "target file (%s)... ", (char *) arg0);
+                    " target file (%s)... ", (char *) arg0);
                 handler = CHECK_IF_TARGET_FILE_OPENED;
             } else {
                 handler = DO_NOTHING;
