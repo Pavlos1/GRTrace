@@ -274,7 +274,8 @@ VOID record_ins_xchg_reg_reg(VOID * ins_ptr, REG reg1, REG reg2) {
 VOID record_ins_xchg_reg_mem(VOID * ins_ptr, REG reg, VOID * mem, UINT32 size) {
     reg = standardize_reg(reg);
 
-    if (reg_taints->find(reg) == reg_taints->end()) {
+    if (reg_taints->find(reg) == reg_taints->end() ||
+        (*reg_taints)[reg] == NULL) {
         (*reg_taints)[reg] = new std::set<int>;
         for (ADDRINT _mem = (ADDRINT) mem;
             _mem < (ADDRINT) mem + size; _mem++) {
@@ -286,7 +287,8 @@ VOID record_ins_xchg_reg_mem(VOID * ins_ptr, REG reg, VOID * mem, UINT32 size) {
             taints->erase(_mem);
         }
     } else {
-        std::set<int> * tmp = (*reg_taints)[reg];
+        std::set<int> * tmp = new std::set<int>();
+        for (auto offset : *((*reg_taints)[reg])) tmp->insert(offset);
         (*reg_taints)[reg]->clear();
         for (ADDRINT _mem = (ADDRINT) mem;
             _mem < (ADDRINT) mem + size; _mem++) {
