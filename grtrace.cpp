@@ -103,6 +103,12 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
                 handler = DO_NOTHING;
             }
             break;
+        case SYS_mmap:
+            if (target_file_opened && (arg4 == target_fd)) {
+                fprintf(stderr, "WARNING: mmap() called on target file.\n");
+            }
+            handler = DO_NOTHING;
+            break;
         default:
             handler = DO_NOTHING;
             break;
