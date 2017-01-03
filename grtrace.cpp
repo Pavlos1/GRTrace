@@ -252,6 +252,9 @@ VOID record_ins_reg_write(VOID * ins_ptr, CATEGORY category,
 }
 
 VOID record_ins_xchg_reg_reg(VOID * ins_ptr, REG reg1, REG reg2) {
+    reg1 = standardize_reg(reg1);
+    reg2 = standardize_reg(reg2);
+
     if (reg_taints->find(reg1) == reg_taints->end()) {
         if (reg_taints->find(reg2) != reg_taints->end()) {
             (*reg_taints)[reg1] = (*reg_taints)[reg2];
@@ -268,20 +271,34 @@ VOID record_ins_xchg_reg_reg(VOID * ins_ptr, REG reg1, REG reg2) {
     }
 }
 
-VOID record_ins_xchg_reg_mem(VOID * ins_ptr, REG reg, VOID * mem) {
+VOID record_ins_xchg_reg_mem(VOID * ins_ptr, REG reg, VOID * mem, UINT32 size) {
+    reg = standardize_reg(reg);
+
     if (reg_taints->find(reg) == reg_taints->end()) {
-        if (taints->find((ADDRINT) mem) != taints->end()) {
-            (*reg_taints)[reg] = (*taints)[(ADDRINT) mem];
+        (*reg_taints)[reg] = new std::set<int>;
+        for (ADDRINT _mem = (ADDRINT) mem;
+            _mem < (ADDRINT) mem + size; _mem++) {
+            if ((taints->find(_mem) != taints->end())
+                && ((*taints)[_mem] != NULL)) {
+                for (auto offset : *((*taints)[_mem]))
+                    (*reg_taints)[reg]->insert(offset);
+            }
+            taints->erase(_mem);
         }
-        taints->erase((ADDRINT) mem);
     } else {
         std::set<int> * tmp = (*reg_taints)[reg];
-        if (taints->find((ADDRINT) mem) == taints->end()) {
-            reg_taints->erase(reg);
-        } else {
-            (*reg_taints)[reg] = (*taints)[(ADDRINT) mem];
+        (*reg_taints)[reg]->clear();
+        for (ADDRINT _mem = (ADDRINT) mem;
+            _mem < (ADDRINT) mem + size; _mem++) {
+            if (taints->find(_mem) != taints->end()
+                && ((*taints)[_mem] != NULL)) {
+                for (auto offset : *((*taints)[_mem]))
+                    (*reg_taints)[reg]->insert(offset);
+            }
+            (*taints)[_mem] = new std::set<int>();
+            for (auto offset : *tmp) (*taints)[_mem]->insert(offset);
         }
-        (*taints)[(ADDRINT) mem] = tmp;
+        delete tmp;
     }
 }
 
@@ -333,7 +350,6 @@ VOID Instruction(INS ins, VOID * v) {
                     IARG_UINT32, REG_GFLAGS, IARG_END);
 
     // TODO: CMPXCHG? (XADD should hypothetically function as normal)
-    // TODO: Make this word with multi-byte variables
     } else if (INS_Opcode(ins) == XED_ICLASS_XCHG) {
 
         if (INS_OperandIsReg(ins, 0) && INS_OperandIsReg(ins, 1)) {
@@ -347,7 +363,8 @@ VOID Instruction(INS ins, VOID * v) {
             INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
                 (AFUNPTR) record_ins_xchg_reg_mem, IARG_INST_PTR,
                 IARG_UINT32, INS_OperandReg(ins, 0),
-                IARG_MEMORYOP_EA, 0, IARG_END);
+                IARG_MEMORYOP_EA, 0,
+                IARG_UINT32, INS_MemoryOperandSize(ins, 0), IARG_END);
         }
     
     } else {
