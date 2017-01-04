@@ -13,6 +13,7 @@ enum SyscallRetHandler {
     DO_NOTHING,
     CHECK_IF_TARGET_FILE_OPENED,
     CHECK_IF_TARGET_FILE_CLOSED,
+    MMAP,
 };
 
 enum SyscallRetHandler handler = DO_NOTHING;
@@ -26,6 +27,7 @@ std::map<REG, std::set<int> *> * reg_taints
     = new std::map<REG, std::set<int> *>();
 
 std::set<int> * operand_taints = new std::set<int>();
+ADDRINT mmap_args[6];
 
 REG standardize_reg(REG reg) {
     return REG_FullRegName(reg);
@@ -80,7 +82,7 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
         case SYS_write:
             if (target_file_opened && (arg0 == target_fd)) {
                 fprintf(stderr, "Application tried to write to input file."
-                    "Nope. Nope. Nope. Nope. Nope. Nope. Nope.\n");
+                    " Nope. Nope. Nope. Nope. Nope. Nope. Nope.\n");
                 exit(1);
             }
             handler = DO_NOTHING;
@@ -105,9 +107,16 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
             break;
         case SYS_mmap:
             if (target_file_opened && (arg4 == target_fd)) {
-                fprintf(stderr, "WARNING: mmap() called on target file.\n");
+                mmap_args[0] = arg0;
+                mmap_args[1] = arg1;
+                mmap_args[2] = arg2;
+                mmap_args[3] = arg3;
+                mmap_args[4] = arg4;
+                mmap_args[5] = arg5;
+                handler = MMAP;
+            } else {
+                handler = DO_NOTHING;
             }
-            handler = DO_NOTHING;
             break;
         default:
             handler = DO_NOTHING;
@@ -136,6 +145,30 @@ VOID record_ins_syscall_after(VOID * ins_ptr, ADDRINT ret) {
                 target_file_opened = false;
             } else {
                 fprintf(stderr, "failed. Will assume file is still open.\n");
+            }
+            break;
+
+        case MMAP:
+            if (ret != 0) {
+                int curr_pos = lseek(target_fd, 0, SEEK_CUR);
+                int file_len = lseek(target_fd, 0, SEEK_END);
+                lseek(target_fd, curr_pos, SEEK_SET);
+
+                int length = mmap_args[1];
+                for (int delta = 0; delta < length; delta++) {
+                    int offset = mmap_args[5] + delta;
+                    ADDRINT mem = ret + delta;
+                    if (offset < file_len) {
+                        if ((taints->find(mem) == taints->end())
+                            || ((*taints)[mem] == NULL)) {
+                            (*taints)[mem] = new std::set<int>();
+                        } else {
+                            (*taints)[mem]->clear();
+                        }
+
+                        (*taints)[mem]->insert(offset);
+                    }
+                }
             }
             break;
     }
