@@ -19,6 +19,8 @@ enum SyscallRetHandler {
 enum SyscallRetHandler handler = DO_NOTHING;
 bool target_file_opened = false;
 char * target_file;
+ADDRINT mmap_args[6];
+FILE * fp;
 
 ADDRINT target_fd;
 std::map<ADDRINT, std::set<int> *> * taints
@@ -27,7 +29,6 @@ std::map<REG, std::set<int> *> * reg_taints
     = new std::map<REG, std::set<int> *>();
 
 std::set<int> * operand_taints = new std::set<int>();
-ADDRINT mmap_args[6];
 
 REG standardize_reg(REG reg) {
     return REG_FullRegName(reg);
@@ -48,6 +49,28 @@ char * getbasename(char * in) {
     out[i] = 0;
 
     return out;
+}
+
+void write_taints() {
+    for (auto iterator = reg_taints->begin(); iterator != reg_taints->end();
+        iterator++) {
+        fprintf(fp, "%s: ", REG_StringShort(iterator->first).c_str());
+        for (auto offset : *(iterator->second)) {
+            fprintf(fp, "%d, ", offset);
+        }
+        fprintf(fp, "\n");
+    }
+
+    for (auto iterator = taints->begin(); iterator != taints->end();
+        iterator++) {
+        fprintf(fp, "%lx: ", iterator->first);
+        for (auto offset : *(iterator->second)) {
+            fprintf(fp, "%d, ", offset);
+        }
+        fprintf(fp, "\n");
+    }
+
+    fprintf(fp, "-------------------------------------------------\n");
 }
 
 VOID record_ins_call(VOID * ptr) {
@@ -75,6 +98,8 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
                     // We're overwriting, so remove previous taint
                     (*taints)[arg1 + i]->clear();
                     (*taints)[arg1 + i]->insert(curr + i);
+
+                    write_taints();
                 }
             }
             handler = DO_NOTHING;
@@ -472,26 +497,8 @@ VOID Instruction(INS ins, VOID * v) {
 }
 
 VOID Fini(INT32 code, VOID * v) {
-    fprintf(stderr, "Writing taints to file... ");
-    FILE * fp = fopen("taints.txt", "w");
-    for (auto iterator = reg_taints->begin(); iterator != reg_taints->end();
-        iterator++) {
-        fprintf(fp, "%s: ", REG_StringShort(iterator->first).c_str());
-        for (auto offset : *(iterator->second)) {
-            fprintf(fp, "%d, ", offset);
-        }
-        fprintf(fp, "\n");
-    }
-    for (auto iterator = taints->begin(); iterator != taints->end();
-        iterator++) {
-        fprintf(fp, "%lx: ", iterator->first);
-        for (auto offset : *(iterator->second)) {
-            fprintf(fp, "%d, ", offset);
-        }
-        fprintf(fp, "\n");
-    }
+    write_taints();
     fclose(fp);
-    fprintf(stderr, "done.\n");
 
     delete operand_taints;
     for (auto iterator = taints->begin(); iterator != taints->end();
@@ -508,6 +515,9 @@ VOID Fini(INT32 code, VOID * v) {
 }
 
 int main(int argc, char ** argv) {
+    // Open taints file for writing
+    fp = fopen("taints.txt", "w");
+
     // Last argument should be filename
     target_file = getbasename(argv[argc - 1]);
 
