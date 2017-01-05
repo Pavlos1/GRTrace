@@ -235,6 +235,8 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
         exit(1);
     }
 
+    // TODO: Rethink some of these special cases
+
     // If instruction is PUSH/POP/CALL/RET, we don't want to propagate the RSP
     // taint, since E/RSP has no impact on the value pushed to the stack
     if(((category == XED_CATEGORY_PUSH) || (category == XED_CATEGORY_POP)
@@ -459,6 +461,9 @@ VOID Instruction(INS ins, VOID * v) {
         }
     
     } else {
+        // TODO: Deal with registers being used as memory offsets
+        // (and hence, should be ignored in taint tracing)
+
         // Handle memory I/O to check for taint propogation
         //
         // NOTE: The order of the for loops is important;
