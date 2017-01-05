@@ -36,6 +36,13 @@ _start:
     movb v2, %r11b
     xchg %r10, %r11
 
+    # Test register/memory exchange
+    movb v1, %r12b
+    movb v2, %r13b
+    movb %r13b, l4
+    xor %r13, %r13
+    xchg l4, %r12
+
     # Close the file
     movq $3, %rax
     movq fd, %rdi
@@ -52,6 +59,7 @@ exit_failure:
 
 .data
 fd: .skip 8
+l4: .skip 8
 v1: .skip 1
 v2: .skip 1
 v3: .skip 1

@@ -73,10 +73,6 @@ void write_taints() {
     fprintf(fp, "-------------------------------------------------\n");
 }
 
-VOID record_ins_call(VOID * ptr) {
-    fprintf(stderr, "%p: CALL\n", ptr);
-}
-
 VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
     ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3, ADDRINT arg4,
         ADDRINT arg5) {
@@ -98,9 +94,9 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
                     // We're overwriting, so remove previous taint
                     (*taints)[arg1 + i]->clear();
                     (*taints)[arg1 + i]->insert(curr + i);
-
-                    write_taints();
                 }
+
+                write_taints();
             }
             handler = DO_NOTHING;
             break;
@@ -194,6 +190,8 @@ VOID record_ins_syscall_after(VOID * ins_ptr, ADDRINT ret) {
                         (*taints)[mem]->insert(offset);
                     }
                 }
+
+                write_taints();
             }
             break;
     }
@@ -231,6 +229,11 @@ VOID record_ins_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
 VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
     REG reg) {
     reg = standardize_reg(reg);
+
+    if (!REG_valid(reg)) {
+        fprintf(stderr, "FATAL: Attempted read on invalid register @ %p\n", ins_ptr);
+        exit(1);
+    }
 
     // If instruction is PUSH/POP/CALL/RET, we don't want to propagate the RSP
     // taint, since E/RSP has no impact on the value pushed to the stack
@@ -287,6 +290,11 @@ VOID record_ins_reg_write(VOID * ins_ptr, CATEGORY category,
     OPCODE opcode, REG reg) {
     reg = standardize_reg(reg);
 
+    if (!REG_valid(reg)) {
+        fprintf(stderr, "FATAL: Attempted write to invalid register @ %p\n", ins_ptr);
+        exit(1);
+    }
+
     // If the instruction is PUSH/POP/CALL/RET, we do not want to modify
     // the taint of E/RSP in any way, since its being decremented
     // by a known quatity.
@@ -319,6 +327,12 @@ VOID record_ins_xchg_reg_reg(VOID * ins_ptr, REG reg1, REG reg2) {
     reg1 = standardize_reg(reg1);
     reg2 = standardize_reg(reg2);
 
+    if (!REG_valid(reg1) || !(REG_valid(reg2))) {
+        fprintf(stderr, "FATAL: xchg instruction (reg, reg)"
+            " on invalid register @ %p\n", ins_ptr);
+        exit(1);
+    }
+
     if (reg_taints->find(reg1) == reg_taints->end()) {
         if (reg_taints->find(reg2) != reg_taints->end()) {
             (*reg_taints)[reg1] = (*reg_taints)[reg2];
@@ -337,6 +351,12 @@ VOID record_ins_xchg_reg_reg(VOID * ins_ptr, REG reg1, REG reg2) {
 
 VOID record_ins_xchg_reg_mem(VOID * ins_ptr, REG reg, VOID * mem, UINT32 size) {
     reg = standardize_reg(reg);
+
+    if (!REG_valid(reg)) {
+        fprintf(stderr, "FATAL: xchg instruction (reg, mem)"
+            " on invalid register @ %p\n", ins_ptr);
+        exit(1);
+    }
 
     if (reg_taints->find(reg) == reg_taints->end() ||
         (*reg_taints)[reg] == NULL) {
@@ -424,11 +444,16 @@ VOID Instruction(INS ins, VOID * v) {
                 IARG_UINT32, INS_OperandReg(ins, 0),
                 IARG_UINT32, INS_OperandReg(ins, 1), IARG_END);
 
-        } else {
-            // This should work with both (REG, MEM) and (MEM, REG)
+        } else if (INS_OperandIsReg(ins, 0)) {
             INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
                 (AFUNPTR) record_ins_xchg_reg_mem, IARG_INST_PTR,
                 IARG_UINT32, INS_OperandReg(ins, 0),
+                IARG_MEMORYOP_EA, 0,
+                IARG_UINT32, INS_MemoryOperandSize(ins, 0), IARG_END);
+        } else {
+            INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+                (AFUNPTR) record_ins_xchg_reg_mem, IARG_INST_PTR,
+                IARG_UINT32, INS_OperandReg(ins, 1),
                 IARG_MEMORYOP_EA, 0,
                 IARG_UINT32, INS_MemoryOperandSize(ins, 0), IARG_END);
         }
@@ -463,7 +488,7 @@ VOID Instruction(INS ins, VOID * v) {
 
         // Populate operand_taints with taints from read registers
         for (UINT32 regOp = 0; regOp < regROperands; regOp++) {
-            INS_InsertPredicatedCall(
+            if (REG_valid(INS_RegR(ins, regOp))) INS_InsertPredicatedCall(
                 ins, IPOINT_BEFORE, (AFUNPTR) record_ins_reg_read,
                 IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
                 IARG_UINT32, INS_Opcode(ins), 
@@ -486,7 +511,7 @@ VOID Instruction(INS ins, VOID * v) {
 
         // Propagate taints in operand_taints to written registers
         for (UINT32 regOp = 0; regOp < regWOperands; regOp++) {
-            INS_InsertPredicatedCall(
+            if (REG_valid(INS_RegW(ins, regOp))) INS_InsertPredicatedCall(
                 ins, IPOINT_BEFORE, (AFUNPTR) record_ins_reg_write,
                 IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
                 IARG_UINT32, INS_Opcode(ins), 
