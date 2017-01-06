@@ -461,9 +461,6 @@ VOID Instruction(INS ins, VOID * v) {
         }
     
     } else {
-        // TODO: Deal with registers being used as memory offsets
-        // (and hence, should be ignored in taint tracing)
-
         // Handle memory I/O to check for taint propogation
         //
         // NOTE: The order of the for loops is important;
@@ -492,13 +489,19 @@ VOID Instruction(INS ins, VOID * v) {
         }
 
         // Populate operand_taints with taints from read registers
+        // Note that, if the register is used as a base memory address,
+        // then it is not added to the taints b/c it does not affect
+        // the VALUE at a given memory address.
         for (UINT32 regOp = 0; regOp < regROperands; regOp++) {
-            if (REG_valid(INS_RegR(ins, regOp))) INS_InsertPredicatedCall(
-                ins, IPOINT_BEFORE, (AFUNPTR) record_ins_reg_read,
-                IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
-                IARG_UINT32, INS_Opcode(ins), 
-                IARG_UINT32, INS_RegR(ins, regOp),
-                IARG_END);
+            if (REG_valid(INS_RegR(ins, regOp))
+                && (INS_RegR(ins, regOp) != INS_MemoryBaseReg(ins))) {
+                INS_InsertPredicatedCall(
+                    ins, IPOINT_BEFORE, (AFUNPTR) record_ins_reg_read,
+                    IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
+                    IARG_UINT32, INS_Opcode(ins),
+                    IARG_UINT32, INS_RegR(ins, regOp),
+                    IARG_END);
+            }
         }
 
         // Propagate taints in operand_taints to written memory
@@ -515,13 +518,19 @@ VOID Instruction(INS ins, VOID * v) {
         }
 
         // Propagate taints in operand_taints to written registers
+        // Note that, if the register is used as a base memory address,
+        // then it is not added to the taints b/c it does not affect
+        // the VALUE at a given memory address.
         for (UINT32 regOp = 0; regOp < regWOperands; regOp++) {
-            if (REG_valid(INS_RegW(ins, regOp))) INS_InsertPredicatedCall(
-                ins, IPOINT_BEFORE, (AFUNPTR) record_ins_reg_write,
-                IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
-                IARG_UINT32, INS_Opcode(ins), 
-                IARG_UINT32, INS_RegW(ins, regOp),
-                IARG_END);
+            if (REG_valid(INS_RegW(ins, regOp))
+                && (INS_RegR(ins, regOp) != INS_MemoryBaseReg(ins))) {
+                INS_InsertPredicatedCall(
+                    ins, IPOINT_BEFORE, (AFUNPTR) record_ins_reg_write,
+                    IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
+                    IARG_UINT32, INS_Opcode(ins),
+                    IARG_UINT32, INS_RegW(ins, regOp),
+                    IARG_END);
+            }
         }
     }
 }
