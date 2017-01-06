@@ -235,22 +235,13 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
         exit(1);
     }
 
+    // TODO: Figure out how to deal with GFLAGS/branching
+
     // If instruction is PUSH/POP/CALL/RET, we don't want to propagate the RSP
     // taint, since E/RSP has no impact on the value pushed to the stack
     if(((category == XED_CATEGORY_PUSH) || (category == XED_CATEGORY_POP)
         || (category == XED_CATEGORY_CALL) || (category == XED_CATEGORY_RET))
             && (reg == REG_STACK_PTR)) return;
-
-    // If the instruction is a conditional instruction, then due to us calling
-    // INS_InsertPredicatedCall it will not be instrumented unless the
-    // condition was met. Hence, the taint in FLAGS should not be propagated.
-    // Conditional jumps are excepted since we want to know about branches.
-    //if ((category != XED_CATEGORY_COND_BR) && (reg == REG_GFLAGS)) return;
-
-    // I don't really have a proper justification for this, other than that
-    // the assembly trace does a lot of MOV/LEA on memory that is specified
-    // relative to (%rip)
-    if (reg == REG_INST_PTR) return;
 
     if (reg_taints->find(reg) != reg_taints->end()) {
         if ((*reg_taints)[reg] != NULL) {
@@ -492,7 +483,8 @@ VOID Instruction(INS ins, VOID * v) {
         // the VALUE at a given memory address.
         for (UINT32 regOp = 0; regOp < regROperands; regOp++) {
             if (REG_valid(INS_RegR(ins, regOp))
-                && (INS_RegR(ins, regOp) != INS_MemoryBaseReg(ins))) {
+                && (INS_RegR(ins, regOp) != INS_MemoryBaseReg(ins))
+                    && (INS_RegR(ins, regOp) != INS_MemoryIndexReg(ins))) {
                 INS_InsertPredicatedCall(
                     ins, IPOINT_BEFORE, (AFUNPTR) record_ins_reg_read,
                     IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
@@ -521,7 +513,8 @@ VOID Instruction(INS ins, VOID * v) {
         // the VALUE at a given memory address.
         for (UINT32 regOp = 0; regOp < regWOperands; regOp++) {
             if (REG_valid(INS_RegW(ins, regOp))
-                && (INS_RegR(ins, regOp) != INS_MemoryBaseReg(ins))) {
+                && (INS_RegW(ins, regOp) != INS_MemoryBaseReg(ins))
+                    && (INS_RegW(ins, regOp) != INS_MemoryIndexReg(ins))) {
                 INS_InsertPredicatedCall(
                     ins, IPOINT_BEFORE, (AFUNPTR) record_ins_reg_write,
                     IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
