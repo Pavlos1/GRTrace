@@ -235,8 +235,6 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
         exit(1);
     }
 
-    // TODO: Rethink some of these special cases
-
     // If instruction is PUSH/POP/CALL/RET, we don't want to propagate the RSP
     // taint, since E/RSP has no impact on the value pushed to the stack
     if(((category == XED_CATEGORY_PUSH) || (category == XED_CATEGORY_POP)
@@ -247,7 +245,7 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
     // INS_InsertPredicatedCall it will not be instrumented unless the
     // condition was met. Hence, the taint in FLAGS should not be propagated.
     // Conditional jumps are excepted since we want to know about branches.
-    if ((category != XED_CATEGORY_COND_BR) && (reg == REG_GFLAGS)) return;
+    //if ((category != XED_CATEGORY_COND_BR) && (reg == REG_GFLAGS)) return;
 
     // I don't really have a proper justification for this, other than that
     // the assembly trace does a lot of MOV/LEA on memory that is specified

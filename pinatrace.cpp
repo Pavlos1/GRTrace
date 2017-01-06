@@ -40,8 +40,9 @@ END_LEGAL */
 
 FILE * trace;
 
-VOID sep(VOID * str) {
-    fprintf(trace, "------------------\n%s\n", (char *) str);
+VOID sep(char * str, REG baseReg) {
+    fprintf(trace, "------------------\n%s\nBaseReg: %s\n", str,
+        REG_StringShort(baseReg).c_str());
 }
 
 // Print a memory read record
@@ -81,7 +82,8 @@ VOID Instruction(INS ins, VOID *v)
     std::string _dis = INS_Disassemble(ins);
     char * dis = (char *) malloc(_dis.length() + 1);
     strcpy(dis, _dis.c_str());
-    INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)sep, IARG_PTR, dis, IARG_END);
+    INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)sep, IARG_PTR, dis,
+        IARG_UINT32, INS_MemoryBaseReg(ins), IARG_END);
 
     for (UINT32 regOp = 0; regOp < regROperands; regOp++)
     {
