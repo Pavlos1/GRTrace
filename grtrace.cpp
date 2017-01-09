@@ -73,6 +73,19 @@ void write_taints() {
     fprintf(fp, "-------------------------------------------------\n");
 }
 
+bool OPCODE_IsCmpXchg(OPCODE op) {
+    return (op == XED_ICLASS_CMPXCHG)
+            || (op == XED_ICLASS_CMPXCHG_LOCK)
+                || (op == XED_ICLASS_CMPXCHG8B)
+                    || (op == XED_ICLASS_CMPXCHG8B_LOCK)
+                        || (op == XED_ICLASS_CMPXCHG16B)
+                            || (op == XED_ICLASS_CMPXCHG16B_LOCK);
+}
+
+bool INS_IsCmpXchg(INS ins) {
+    return OPCODE_IsCmpXchg(INS_Opcode(ins));
+}
+
 VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
     ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3, ADDRINT arg4,
         ADDRINT arg5) {
@@ -314,7 +327,9 @@ VOID record_ins_reg_write(VOID * ins_ptr, CATEGORY category,
     }
 }
 
-VOID record_ins_xchg_reg_reg(VOID * ins_ptr, REG reg1, REG reg2) {
+VOID record_ins_xchg_reg_reg(VOID * ins_ptr, CATEGORY category,
+    OPCODE opcode, REG reg1, REG reg2) {
+
     reg1 = standardize_reg(reg1);
     reg2 = standardize_reg(reg2);
 
@@ -322,6 +337,31 @@ VOID record_ins_xchg_reg_reg(VOID * ins_ptr, REG reg1, REG reg2) {
         fprintf(stderr, "FATAL: xchg instruction (reg, reg)"
             " on invalid register @ %p\n", ins_ptr);
         exit(1);
+    }
+
+    if (OPCODE_IsCmpXchg(opcode)) {
+
+        if ((reg_taints->find(REG_GFLAGS) == reg_taints->end())
+            || ((*reg_taints)[REG_GFLAGS] == NULL)) {
+
+            (*reg_taints)[REG_GFLAGS] = new std::set<int>;
+        } else {
+            (*reg_taints)[REG_GFLAGS]->clear();
+        }
+
+        if ((reg_taints->find(reg1) != reg_taints->end())
+            && ((*reg_taints)[reg1] != NULL)) {
+ 
+            for (auto offset : *((*reg_taints)[reg1]))
+                (*reg_taints)[REG_GFLAGS]->insert(offset);
+        }
+
+        if ((reg_taints->find(reg2) != reg_taints->end())
+            && ((*reg_taints)[reg2] != NULL)) {
+
+            for (auto offset : *((*reg_taints)[reg2]))
+                (*reg_taints)[REG_GFLAGS]->insert(offset);
+        }
     }
 
     if (reg_taints->find(reg1) == reg_taints->end()) {
@@ -340,7 +380,9 @@ VOID record_ins_xchg_reg_reg(VOID * ins_ptr, REG reg1, REG reg2) {
     }
 }
 
-VOID record_ins_xchg_reg_mem(VOID * ins_ptr, REG reg, VOID * mem, UINT32 size) {
+VOID record_ins_xchg_reg_mem(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
+    REG reg, VOID * mem, UINT32 size) {
+
     reg = standardize_reg(reg);
 
     if (!REG_valid(reg)) {
@@ -415,7 +457,9 @@ VOID Instruction(INS ins, VOID * v) {
     // Specifically handle the case of `XOR %REG, %REG` and `SUB %REG, %REG`
     // Both %REG(=0) and %RFLAGS are now deterministic, and thus not tainted
     } else if (((INS_Opcode(ins) == XED_ICLASS_XOR)
-        || (INS_Opcode(ins) == XED_ICLASS_SUB))
+        || (INS_Opcode(ins) == XED_ICLASS_SUB)
+            || (INS_Opcode(ins) == XED_ICLASS_XOR_LOCK)
+                || (INS_Opcode(ins) == XED_ICLASS_SUB_LOCK))
             && INS_OperandIsReg(ins, 0) && INS_OperandIsReg(ins, 1)
                 && (INS_OperandReg(ins, 0) == INS_OperandReg(ins, 1))) {
 
@@ -426,24 +470,26 @@ VOID Instruction(INS ins, VOID * v) {
                     (AFUNPTR) clear_reg_taint, IARG_INST_PTR,
                     IARG_UINT32, REG_GFLAGS, IARG_END);
 
-    // TODO: CMPXCHG? (XADD should hypothetically function as normal)
-    } else if (INS_Opcode(ins) == XED_ICLASS_XCHG) {
+    } else if (INS_IsXchg(ins) || INS_IsCmpXchg(ins)) {
 
         if (INS_OperandIsReg(ins, 0) && INS_OperandIsReg(ins, 1)) {
             INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
                 (AFUNPTR) record_ins_xchg_reg_reg, IARG_INST_PTR,
+                IARG_UINT32, INS_Category(ins), IARG_UINT32, INS_Opcode(ins),
                 IARG_UINT32, INS_OperandReg(ins, 0),
                 IARG_UINT32, INS_OperandReg(ins, 1), IARG_END);
 
         } else if (INS_OperandIsReg(ins, 0)) {
             INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
                 (AFUNPTR) record_ins_xchg_reg_mem, IARG_INST_PTR,
+                IARG_UINT32, INS_Category(ins), IARG_UINT32, INS_Opcode(ins),
                 IARG_UINT32, INS_OperandReg(ins, 0),
                 IARG_MEMORYOP_EA, 0,
                 IARG_UINT32, INS_MemoryOperandSize(ins, 0), IARG_END);
         } else {
             INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
                 (AFUNPTR) record_ins_xchg_reg_mem, IARG_INST_PTR,
+                IARG_UINT32, INS_Category(ins), IARG_UINT32, INS_Opcode(ins),
                 IARG_UINT32, INS_OperandReg(ins, 1),
                 IARG_MEMORYOP_EA, 0,
                 IARG_UINT32, INS_MemoryOperandSize(ins, 0), IARG_END);
