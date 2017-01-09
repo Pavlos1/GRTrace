@@ -86,6 +86,14 @@ bool INS_IsCmpXchg(INS ins) {
     return OPCODE_IsCmpXchg(INS_Opcode(ins));
 }
 
+bool OPCODE_IsXadd(OPCODE op) {
+    return (op == XED_ICLASS_XADD) || (op == XED_ICLASS_XADD_LOCK);
+}
+
+bool INS_IsXadd(INS ins) {
+    return OPCODE_IsXadd(INS_Opcode(ins));
+}
+
 VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
     ADDRINT arg0, ADDRINT arg1, ADDRINT arg2, ADDRINT arg3, ADDRINT arg4,
         ADDRINT arg5) {
@@ -113,6 +121,7 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
             }
             handler = DO_NOTHING;
             break;
+
         case SYS_write:
             if (target_file_opened && (arg0 == target_fd)) {
                 fprintf(stderr, "Application tried to write to input file."
@@ -121,6 +130,7 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
             }
             handler = DO_NOTHING;
             break;
+
         case SYS_open:
             if (strstr((char *) arg0, target_file)) {
                 fprintf(stderr, "Trying to open what looks like our"
@@ -130,6 +140,7 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
                 handler = DO_NOTHING;
             }
             break;
+
         case SYS_close:
             if (target_file_opened && (arg0 == target_fd)) {
                 fprintf(stderr, "Trying to close the target file... ");
@@ -139,6 +150,7 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
                 handler = DO_NOTHING;
             }
             break;
+
         case SYS_mmap:
             if (target_file_opened && (arg4 == target_fd)) {
                 mmap_args[0] = arg0;
@@ -152,6 +164,7 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
                 handler = DO_NOTHING;
             }
             break;
+
         default:
             handler = DO_NOTHING;
             break;
@@ -334,7 +347,7 @@ VOID record_ins_xchg_reg_reg(VOID * ins_ptr, CATEGORY category,
     reg2 = standardize_reg(reg2);
 
     if (!REG_valid(reg1) || !(REG_valid(reg2))) {
-        fprintf(stderr, "FATAL: xchg instruction (reg, reg)"
+        fprintf(stderr, "FATAL: (cmp)xchg instruction (reg, reg)"
             " on invalid register @ %p\n", ins_ptr);
         exit(1);
     }
@@ -352,15 +365,17 @@ VOID record_ins_xchg_reg_reg(VOID * ins_ptr, CATEGORY category,
         if ((reg_taints->find(reg1) != reg_taints->end())
             && ((*reg_taints)[reg1] != NULL)) {
  
-            for (auto offset : *((*reg_taints)[reg1]))
+            for (auto offset : *((*reg_taints)[reg1])) {
                 (*reg_taints)[REG_GFLAGS]->insert(offset);
+            }
         }
 
         if ((reg_taints->find(reg2) != reg_taints->end())
             && ((*reg_taints)[reg2] != NULL)) {
 
-            for (auto offset : *((*reg_taints)[reg2]))
+            for (auto offset : *((*reg_taints)[reg2])) {
                 (*reg_taints)[REG_GFLAGS]->insert(offset);
+            }
         }
     }
 
@@ -386,7 +401,7 @@ VOID record_ins_xchg_reg_mem(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
     reg = standardize_reg(reg);
 
     if (!REG_valid(reg)) {
-        fprintf(stderr, "FATAL: xchg instruction (reg, mem)"
+        fprintf(stderr, "FATAL: (cmp)xchg instruction (reg, mem)"
             " on invalid register @ %p\n", ins_ptr);
         exit(1);
     }
@@ -398,31 +413,131 @@ VOID record_ins_xchg_reg_mem(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
             _mem < (ADDRINT) mem + size; _mem++) {
             if ((taints->find(_mem) != taints->end())
                 && ((*taints)[_mem] != NULL)) {
-                for (auto offset : *((*taints)[_mem]))
+                for (auto offset : *((*taints)[_mem])) {
                     (*reg_taints)[reg]->insert(offset);
+                }
             }
             taints->erase(_mem);
         }
+
     } else {
         std::set<int> * tmp = new std::set<int>();
-        for (auto offset : *((*reg_taints)[reg])) tmp->insert(offset);
+        for (auto offset : *((*reg_taints)[reg])) { tmp->insert(offset); }
         (*reg_taints)[reg]->clear();
         for (ADDRINT _mem = (ADDRINT) mem;
             _mem < (ADDRINT) mem + size; _mem++) {
             if (taints->find(_mem) != taints->end()
                 && ((*taints)[_mem] != NULL)) {
-                for (auto offset : *((*taints)[_mem]))
+                for (auto offset : *((*taints)[_mem])) {
                     (*reg_taints)[reg]->insert(offset);
+                }
             }
             (*taints)[_mem] = new std::set<int>();
-            for (auto offset : *tmp) (*taints)[_mem]->insert(offset);
+            for (auto offset : *tmp) { (*taints)[_mem]->insert(offset); }
         }
         delete tmp;
+    }
+
+}
+
+VOID record_ins_xadd_reg_reg(VOID * ins_ptr, CATEGORY category,
+    OPCODE opcode, REG reg1, REG reg2) {
+
+
+    reg1 = standardize_reg(reg1);
+    reg2 = standardize_reg(reg2);
+
+    if (!REG_valid(reg1) || !(REG_valid(reg2))) {
+        fprintf(stderr, "FATAL: xadd instruction (reg, reg)"
+            " on invalid register @ %p\n", ins_ptr);
+        exit(1);
+    }
+
+    record_ins_xchg_reg_reg(ins_ptr, category, opcode, reg1, reg2);
+
+    if ((reg_taints->find(reg2) != reg_taints->end())
+        && ((*reg_taints)[reg2] != NULL)) {
+
+        if ((reg_taints->find(reg1) == reg_taints->end())
+            || ((*reg_taints)[reg1] == NULL)) {
+
+                (*reg_taints)[reg1] = new std::set<int>();
+        }
+
+        if ((reg_taints->find(REG_GFLAGS) == reg_taints->end())
+            || ((*reg_taints)[REG_GFLAGS] == NULL)) {
+
+            (*reg_taints)[REG_GFLAGS] = new std::set<int>();
+        } else {
+            (*reg_taints)[REG_GFLAGS]->clear();
+        }
+
+        for (auto offset : *((*reg_taints)[reg2])) {
+            (*reg_taints)[reg1]->insert(offset);
+        }
+
+        for (auto offset : *((*reg_taints)[reg1])) {
+            (*reg_taints)[REG_GFLAGS]->insert(offset);
+        }
+    }
+}
+
+VOID record_ins_xadd_reg_mem(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
+    REG reg, VOID * mem, UINT32 size) {
+
+    reg = standardize_reg(reg);
+
+    if (!REG_valid(reg)) {
+        fprintf(stderr, "FATAL: (cmp)xchg instruction (reg, mem)"
+            " on invalid register @ %p\n", ins_ptr);
+        exit(1);
+    }
+
+    record_ins_xchg_reg_mem(ins_ptr, category, opcode, reg, mem, size);
+
+    // DEST is memory!!
+    if ((reg_taints->find(reg) != reg_taints->end())
+        && ((*reg_taints)[reg] != NULL)) {
+
+        for (ADDRINT _mem = (ADDRINT) mem;
+            _mem < (ADDRINT) mem + size; _mem++) {
+
+            if ((taints->find(_mem) == taints->end())
+                || ((*taints)[_mem] == NULL)) {
+
+                    (*taints)[_mem] = new std::set<int>();
+            }
+        }
+
+        if ((reg_taints->find(REG_GFLAGS) == reg_taints->end())
+            || ((*reg_taints)[REG_GFLAGS] == NULL)) {
+
+            (*reg_taints)[REG_GFLAGS] = new std::set<int>();
+        } else {
+            (*reg_taints)[REG_GFLAGS]->clear();
+        }
+
+        for (ADDRINT _mem = (ADDRINT) mem;
+            _mem < (ADDRINT) mem + size; _mem++) {
+
+            for (auto offset : *((*reg_taints)[reg])) {
+                (*taints)[_mem]->insert(offset);
+            }
+        }
+
+        for (ADDRINT _mem = (ADDRINT) mem;
+            _mem < (ADDRINT) mem + size; _mem++) {
+
+            for (auto offset : *((*taints)[_mem])) {
+                (*reg_taints)[REG_GFLAGS]->insert(offset);
+            }
+        }
     }
 }
 
 VOID SyscallEntry(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std,
     VOID *v) {
+
     record_ins_syscall_before((VOID *) PIN_GetContextReg(ctxt, REG_INST_PTR),
         PIN_GetSyscallNumber(ctxt, std),
         PIN_GetSyscallArgument(ctxt, std, 0),
@@ -435,6 +550,7 @@ VOID SyscallEntry(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std,
 
 VOID SyscallExit(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std,
     VOID *v) {
+
     record_ins_syscall_after((VOID *) PIN_GetContextReg(ctxt, REG_INST_PTR),
         PIN_GetSyscallReturn(ctxt, std));
 }
@@ -470,6 +586,23 @@ VOID Instruction(INS ins, VOID * v) {
                     (AFUNPTR) clear_reg_taint, IARG_INST_PTR,
                     IARG_UINT32, REG_GFLAGS, IARG_END);
 
+    } else if (INS_IsXadd(ins)) {
+
+        if (INS_OperandIsReg(ins, 0) && INS_OperandIsReg(ins, 1)) {
+            INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+                (AFUNPTR) record_ins_xadd_reg_reg, IARG_INST_PTR,
+                IARG_UINT32, INS_Category(ins), IARG_UINT32, INS_Opcode(ins),
+                IARG_UINT32, INS_OperandReg(ins, 0),
+                IARG_UINT32, INS_OperandReg(ins, 1), IARG_END);
+        } else {
+            INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+                (AFUNPTR) record_ins_xadd_reg_mem, IARG_INST_PTR,
+                IARG_UINT32, INS_Category(ins), IARG_UINT32, INS_Opcode(ins),
+                IARG_UINT32, INS_OperandReg(ins, 1),
+                IARG_MEMORYOP_EA, 0,
+                IARG_UINT32, INS_MemoryOperandSize(ins, 0), IARG_END);
+        }
+
     } else if (INS_IsXchg(ins) || INS_IsCmpXchg(ins)) {
 
         if (INS_OperandIsReg(ins, 0) && INS_OperandIsReg(ins, 1)) {
@@ -486,6 +619,7 @@ VOID Instruction(INS ins, VOID * v) {
                 IARG_UINT32, INS_OperandReg(ins, 0),
                 IARG_MEMORYOP_EA, 0,
                 IARG_UINT32, INS_MemoryOperandSize(ins, 0), IARG_END);
+
         } else {
             INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
                 (AFUNPTR) record_ins_xchg_reg_mem, IARG_INST_PTR,
@@ -577,6 +711,7 @@ VOID Fini(INT32 code, VOID * v) {
     fclose(fp);
 
     delete operand_taints;
+
     for (auto iterator = taints->begin(); iterator != taints->end();
         iterator++) {
         delete iterator->second;
