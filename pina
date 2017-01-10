@@ -1,0 +1,16 @@
+#!/bin/bash
+
+if [ -z $1 ]; then
+    PARSER="/usr/bin/gs -o nul -sDEVICE=nullpage"
+else
+    PARSER=$1
+fi
+
+if [ -z $2 ]; then
+    TARGET="tests/pdf_invalid.pdf"
+else
+    TARGET=$2
+fi
+
+PIN_ROOT=$(find .. -maxdepth 1 -type d -regextype sed -regex ".*pin.*" -print -quit)
+$PIN_ROOT/pin -t obj-intel64/pinatrace.so -- $PARSER $TARGET

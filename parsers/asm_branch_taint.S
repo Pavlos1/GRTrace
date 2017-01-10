@@ -34,6 +34,7 @@ _start:
     movq $1, %rdx
     syscall
 
+    # Taint clearing check
     movb v1, %r10b
     xor %r10, %r10
     movb v1, %r10b
