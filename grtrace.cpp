@@ -314,7 +314,7 @@ VOID record_ins_reg_write(VOID * ins_ptr, CATEGORY category,
 
     // If the instruction is PUSH/POP/CALL/RET, we do not want to modify
     // the taint of E/RSP in any way, since its being decremented
-    // by a known quatity.
+    // by a known quantity.
     if(((category == XED_CATEGORY_PUSH) || (category == XED_CATEGORY_POP)
         || (category == XED_CATEGORY_CALL) || (category == XED_CATEGORY_RET))
             && (reg == REG_STACK_PTR)) return;
@@ -558,17 +558,19 @@ VOID SyscallExit(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std,
 VOID Instruction(INS ins, VOID * v) {
     // Handle SYSCALL/0x80 interrupt to check for I/O taints originating
     // from the target file
-    if (INS_IsSyscall(ins) && INS_HasFallThrough(ins)) {
-        // Executed before control is handed over to the kernel
-        INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
-            (AFUNPTR) record_ins_syscall_before, IARG_INST_PTR,
-            IARG_SYSCALL_NUMBER, IARG_SYSARG_VALUE, 0, IARG_SYSARG_VALUE, 1,
-            IARG_SYSARG_VALUE, 2, IARG_SYSARG_VALUE, 3, IARG_SYSARG_VALUE, 4,
-            IARG_SYSARG_VALUE, 5, IARG_END);
-        // Executed after kernel returns
-        INS_InsertPredicatedCall(ins, IPOINT_AFTER,
-            (AFUNPTR) record_ins_syscall_after, IARG_INST_PTR,
-            IARG_SYSRET_VALUE, IARG_END);
+    if (INS_IsSyscall(ins)) {
+        if (INS_HasFallThrough(ins)) {
+            // Executed before control is handed over to the kernel
+            INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+                (AFUNPTR) record_ins_syscall_before, IARG_INST_PTR,
+                IARG_SYSCALL_NUMBER, IARG_SYSARG_VALUE, 0, IARG_SYSARG_VALUE, 1,
+                IARG_SYSARG_VALUE, 2, IARG_SYSARG_VALUE, 3, IARG_SYSARG_VALUE, 4,
+                IARG_SYSARG_VALUE, 5, IARG_END);
+            // Executed after kernel returns
+            INS_InsertPredicatedCall(ins, IPOINT_AFTER,
+                (AFUNPTR) record_ins_syscall_after, IARG_INST_PTR,
+                IARG_SYSRET_VALUE, IARG_END);
+        } else { return; }
 
     // Specifically handle the case of `XOR %REG, %REG` and `SUB %REG, %REG`
     // Both %REG(=0) and %RFLAGS are now deterministic, and thus not tainted
