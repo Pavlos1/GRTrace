@@ -34,6 +34,19 @@ REG standardize_reg(REG reg) {
     return REG_FullRegName(reg);
 }
 
+VOID prop_rip_taint(std::set<int> * set) {
+    // If %RIP is tainted, then all subsequent memory/register
+    // writes should propogate this taint, as a means of encoding
+    // information about branching.
+    if ((reg_taints->find(REG_INST_PTR) != reg_taints->end())
+        && ((*reg_taints)[REG_INST_PTR] != NULL)) {
+
+        for (auto offset : *((*reg_taints)[REG_INST_PTR])) {
+            set->insert(offset);
+        }
+    }
+}
+
 char * getbasename(char * in) {
     char * out = (char *) malloc(255);
     int end=0;
@@ -114,6 +127,7 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
 
                     // We're overwriting, so remove previous taint
                     (*taints)[arg1 + i]->clear();
+                    prop_rip_taint((*taints)[arg1 + i]);
                     (*taints)[arg1 + i]->insert(curr + i);
                 }
 
@@ -214,6 +228,7 @@ VOID record_ins_syscall_after(VOID * ins_ptr, ADDRINT ret) {
                         }
 
                         (*taints)[mem]->insert(offset);
+                        prop_rip_taint((*taints)[mem]);
                     }
                 }
 
@@ -225,17 +240,28 @@ VOID record_ins_syscall_after(VOID * ins_ptr, ADDRINT ret) {
 
 VOID clear_operand_taints(VOID * ins_ptr) {
     operand_taints->clear();
+    prop_rip_taint(operand_taints);
 }
 
 VOID clear_reg_taint(VOID * ins_ptr, REG reg) {
     reg = standardize_reg(reg);
 
-    if (reg_taints->find(reg) != reg_taints->end()) {
-        if ((*reg_taints)[reg] != NULL) {
-            delete (*reg_taints)[reg];
-        }
+    if ((reg_taints->find(REG_INST_PTR) != reg_taints->end()) 
+        && ((*reg_taints)[REG_INST_PTR] != NULL)) {
 
-        reg_taints->erase(reg);
+        if ((reg_taints->find(reg) != reg_taints->end())
+            && ((*reg_taints)[reg] != NULL)) {
+
+            prop_rip_taint((*reg_taints)[reg]);
+        }
+    } else {
+        if (reg_taints->find(reg) != reg_taints->end()) {
+            if ((*reg_taints)[reg] != NULL) {
+                delete (*reg_taints)[reg];
+            }
+
+            reg_taints->erase(reg);
+        }
     }
 }
 
