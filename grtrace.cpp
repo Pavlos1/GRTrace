@@ -280,22 +280,22 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
 
 VOID record_ins_write(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
     char * out_ptr, UINT32 length) {
+
     for (UINT32 i=0; i<length; i++) {
-        if (taints->find((ADDRINT) (out_ptr+i)) == taints->end()) {
-            (*taints)[(ADDRINT) (out_ptr+i)] = new std::set<int>();
-        }
-        if ((*taints)[(ADDRINT) (out_ptr+i)] == NULL) {
-            (*taints)[(ADDRINT) (out_ptr+i)] = new std::set<int>();
-        }
+        if ((taints->find((ADDRINT) (out_ptr+i)) == taints->end())
+            || ((*taints)[(ADDRINT) (out_ptr+i)] == NULL)) {
 
-        // TODO: A better way of doing this
-        if (operand_taints->empty()) {
-            delete (*taints)[(ADDRINT) (out_ptr+i)];
-            taints->erase((ADDRINT) (out_ptr+i));
-            return;
+            if (!operand_taints->empty()) {
+                (*taints)[(ADDRINT) (out_ptr+i)] = new std::set<int>();
+            }
+        } else {
+            if (operand_taints->empty()) {
+                delete (*taints)[(ADDRINT) (out_ptr+i)];
+                taints->erase((ADDRINT) (out_ptr+i));
+            } else {
+                (*taints)[(ADDRINT) (out_ptr+i)]->clear();
+            }
         }
-
-        (*taints)[(ADDRINT) (out_ptr+i)]->clear();
 
         for (auto offset : *operand_taints) {
             (*taints)[(ADDRINT) (out_ptr+i)]->insert(offset);
@@ -305,6 +305,7 @@ VOID record_ins_write(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
 
 VOID record_ins_reg_write(VOID * ins_ptr, CATEGORY category,
     OPCODE opcode, REG reg) {
+
     reg = standardize_reg(reg);
 
     if (!REG_valid(reg)) {
@@ -319,21 +320,20 @@ VOID record_ins_reg_write(VOID * ins_ptr, CATEGORY category,
         || (category == XED_CATEGORY_CALL) || (category == XED_CATEGORY_RET))
             && (reg == REG_STACK_PTR)) return;
 
-    if (reg_taints->find(reg) == reg_taints->end()) {
-        (*reg_taints)[reg] = new std::set<int>();
-    }
-    if ((*reg_taints)[reg] == NULL) {
-        (*reg_taints)[reg] = new std::set<int>();
-    }
+    if ((reg_taints->find(reg) == reg_taints->end())
+        || ((*reg_taints)[reg] == NULL)) {
 
-    // TODO: A better way of doing this. 
-    if (operand_taints->empty()) {
-        delete (*reg_taints)[reg];
-        reg_taints->erase(reg);
-        return;
+        if (!operand_taints->empty()) {
+            (*reg_taints)[reg] = new std::set<int>();
+        }
+    } else {
+        if (operand_taints->empty()) {
+            delete (*reg_taints)[reg];
+            reg_taints->erase(reg);
+        } else {
+            (*reg_taints)[reg]->clear();
+        }
     }
-
-    (*reg_taints)[reg]->clear();
 
     for (auto offset : *operand_taints) {
         (*reg_taints)[reg]->insert(offset);
