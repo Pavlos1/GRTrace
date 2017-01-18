@@ -7,7 +7,7 @@ else
 fi
 
 if [ -z $2 ]; then
-    TARGET="tests/pdf_invalid.pdf"
+    TARGET="tests/pdf_minimal.pdf"
 else
     TARGET=$2
 fi

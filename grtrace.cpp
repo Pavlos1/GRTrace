@@ -7,6 +7,7 @@
 #include <set>
 #include "pin.H"
 
+#define SECURITY_MODE
 #define __MIN(a, b) ((a) < (b) ? (a) : (b))
 
 enum SyscallRetHandler {
@@ -322,6 +323,13 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
         fprintf(stderr, "FATAL: Attempted read on invalid register @ %p\n", ins_ptr);
         exit(1);
     }
+
+    #ifdef SECURITY_MODE
+    // If we are only interested in taint tracing for security purposes
+    // (i.e. findiung exploits etc), then we do not consider the instruction
+    // pointer tainted when a conditional jump reads from RFLAGS
+    if ((category == XED_CATEGORY_COND_BR) && (reg == REG_GFLAGS)) return;
+    #endif
 
     // If instruction is PUSH/POP/CALL/RET, we don't want to propagate the RSP
     // taint, since E/RSP has no impact on the value pushed to the stack
