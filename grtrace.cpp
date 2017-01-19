@@ -72,6 +72,21 @@ VOID prop_rip_taint_to_mem(ADDRINT mem) {
     }
 }
 
+VOID check_rip_taint(VOID * ins_ptr) {
+    if ((reg_taints->find(REG_INST_PTR) != reg_taints->end())
+        && ((*reg_taints)[REG_INST_PTR] != NULL)
+            && (!(*reg_taints)[REG_INST_PTR]->empty())) {
+
+        fprintf(stderr, "Instruction pointer (%p) is tainted by: ", ins_ptr);
+        for (auto offset : *((*reg_taints)[REG_INST_PTR])) {
+            fprintf(stderr, "%d ", offset);
+        }
+        fprintf(stderr, "\nTerminating program as a result.\n");
+
+        exit(1);
+    }
+}
+
 char * getbasename(char * in) {
     char * out = (char *) malloc(255);
     int end=0;
@@ -645,6 +660,11 @@ VOID SyscallExit(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std,
 }
 
 VOID Instruction(INS ins, VOID * v) {
+    #ifdef SECURITY_MODE
+    INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR) check_rip_taint,
+        IARG_INST_PTR, IARG_END);
+    #endif
+
     // Handle SYSCALL/0x80 interrupt to check for I/O taints originating
     // from the target file
     if (INS_IsSyscall(ins)) {
