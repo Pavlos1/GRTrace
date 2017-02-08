@@ -7,6 +7,7 @@
 #include <set>
 #include "pin.H"
 
+#define SECURITY_MODE
 #define __MIN(a, b) ((a) < (b) ? (a) : (b))
 
 enum SyscallRetHandler {
@@ -68,6 +69,21 @@ VOID prop_rip_taint_to_mem(ADDRINT mem) {
                 (*taints)[mem]->insert(offset);
             }   
 
+    }
+}
+
+VOID check_rip_taint(VOID * ins_ptr) {
+    if ((reg_taints->find(REG_INST_PTR) != reg_taints->end())
+        && ((*reg_taints)[REG_INST_PTR] != NULL)
+            && (!(*reg_taints)[REG_INST_PTR]->empty())) {
+
+        fprintf(stderr, "Instruction pointer (%p) is tainted by: ", ins_ptr);
+        for (auto offset : *((*reg_taints)[REG_INST_PTR])) {
+            fprintf(stderr, "%d ", offset);
+        }
+        fprintf(stderr, "\nTerminating program as a result.\n");
+
+        exit(1);
     }
 }
 
@@ -322,6 +338,13 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
         fprintf(stderr, "FATAL: Attempted read on invalid register @ %p\n", ins_ptr);
         exit(1);
     }
+
+    #ifdef SECURITY_MODE
+    // If we are only interested in taint tracing for security purposes
+    // (i.e. findiung exploits etc), then we do not consider the instruction
+    // pointer tainted when a conditional jump reads from RFLAGS
+    if ((category == XED_CATEGORY_COND_BR) && (reg == REG_GFLAGS)) return;
+    #endif
 
     // If instruction is PUSH/POP/CALL/RET, we don't want to propagate the RSP
     // taint, since E/RSP has no impact on the value pushed to the stack
@@ -637,6 +660,11 @@ VOID SyscallExit(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std,
 }
 
 VOID Instruction(INS ins, VOID * v) {
+    #ifdef SECURITY_MODE
+    INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR) check_rip_taint,
+        IARG_INST_PTR, IARG_END);
+    #endif
+
     // Handle SYSCALL/0x80 interrupt to check for I/O taints originating
     // from the target file
     if (INS_IsSyscall(ins)) {
