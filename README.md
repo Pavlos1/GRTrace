@@ -1,8 +1,9 @@
 # GRTrace
 ## TODO: Think of better title
 
-A utility for producing a GRIST-compatible parse trace by instrumenting an
-x86 binary with Intel's PIN tool.
+A utility for producing a taint trace by instrumenting an
+x86 binary with Intel's PIN tool. Presented at the Fifth
+Trustworthy Systems Summer School (Sydney, 13-14 Feb)
 
 To run the parser, first download and extract the latest PIN toolkit to
 GRTrace's parent directory. Then, run:
