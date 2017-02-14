@@ -7,7 +7,7 @@
 #include <set>
 #include "pin.H"
 
-#define SECURITY_MODE
+//#define SECURITY_MODE
 #define __MIN(a, b) ((a) < (b) ? (a) : (b))
 
 enum SyscallRetHandler {
