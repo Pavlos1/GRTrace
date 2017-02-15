@@ -85,6 +85,19 @@ VOID check_rip_taint(VOID * ins_ptr) {
 
         exit(1);
     }
+
+    if ((taints->find((ADDRINT) ins_ptr) != taints->end())
+        && ((*taints)[(ADDRINT) ins_ptr] != NULL)
+            && (!((*taints)[(ADDRINT) ins_ptr]->empty()))) {
+
+        fprintf(stderr, "Instruction @ %p is tainted by: ", ins_ptr);
+        for (auto offset : *((*taints)[(ADDRINT) ins_ptr])) {
+            fprintf(stderr, "%d", offset);
+        }
+        fprintf(stderr, "\nTerminating program as a result.\n");
+
+        exit(1);
+    }
 }
 
 char * getbasename(char * in) {
