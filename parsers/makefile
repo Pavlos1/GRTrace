@@ -1,8 +1,17 @@
-default:
-	mkdir -p bin
-	gcc simple_taint.c -o bin/simple_taint
-	gcc branch_taint.c -o bin/branch_taint
-	gcc multi_taint.c -o bin/multi_taint
-	gcc -nostdlib asm_branch_taint.S -o bin/asm_branch_taint
-	gcc -nostdlib asm_xchg_taint.S -o bin/asm_xchg_taint
-	gcc -nostdlib asm_offset_taint.S -o bin/asm_offset_taint
+CC  := gcc
+SRC := $(shell\
+    find . -maxdepth 1 -type f -regextype sed -regex ".*\(\.c\|\.S\)")
+EXC := $(patsubst %.S,bin/%,$(patsubst %.c,bin/%,$(SRC)))
+
+bin/%: %.c
+	$(CC) $^ -o $@
+
+bin/%: %.S
+	$(CC) -nostdlib $^ -o $@
+
+all: default
+
+default: $(EXC)
+
+clean:
+	rm -f bin/*
