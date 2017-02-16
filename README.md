@@ -1,12 +1,14 @@
 # GRTrace
 ## TODO: Think of better title
 
-A utility for producing a taint trace by instrumenting an
-x86 binary with Intel's PIN tool. Presented at the Fifth
-Trustworthy Systems Summer School (Sydney, 13-14 Feb)
+A utility for producing a taint trace by instrumenting an x86 binary
+with Intel's PIN tool. Presented at the Fifth Trustworthy Systems
+Summer School (Sydney, 13-14 Feb).
 
-To run the parser, first download and extract the latest PIN toolkit to
-GRTrace's parent directory. Then, run:
+The poster and presentation slides can be found under TSSummerSchool/.
+
+To run the taint tracer, first download and extract the latest PIN toolkit to
+GRTrace's parent directory. Do not rename the extracted folder. Then, run:
 
 ```bash
 ./make
