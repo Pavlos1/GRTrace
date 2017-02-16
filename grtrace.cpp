@@ -752,7 +752,50 @@ VOID Instruction(INS ins, VOID * v) {
                 IARG_MEMORYOP_EA, 0,
                 IARG_UINT32, INS_MemoryOperandSize(ins, 0), IARG_END);
         }
-    
+
+    // Deal with string instructions.
+    //
+    // The REP prefixes are handled fine; the instruction
+    // just gets instrumented again. But, all the registers
+    // that are written to are changed in a deterministic way
+    // (e.g. inc/dec RCX), and all the registers that are read
+    // will only change the location of memory read/written,
+    // never the value.
+    //
+    // Hence, we only care about the memory read and written.
+    } else if (INS_Category(ins) == XED_CATEGORY_STRINGOP) {
+
+        // Clear taints for current instruction
+        INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+            (AFUNPTR) clear_operand_taints, IARG_INST_PTR, IARG_END);
+
+        UINT32 memOperands = INS_MemoryOperandCount(ins);
+
+        // Grab the memory location read (and the size of the read)
+        for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
+            if (INS_MemoryOperandIsRead(ins, memOp)) {
+                INS_InsertPredicatedCall(
+                    ins, IPOINT_BEFORE, (AFUNPTR) record_ins_read,
+                    IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
+                    IARG_UINT32, INS_Opcode(ins),
+                    IARG_MEMORYOP_EA, memOp,
+                    IARG_UINT32, INS_MemoryOperandSize(ins, memOp),
+                    IARG_END);
+            }
+        }
+
+        for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
+            if (INS_MemoryOperandIsWritten(ins, memOp)) {
+                INS_InsertPredicatedCall(
+                    ins, IPOINT_BEFORE, (AFUNPTR) record_ins_write,
+                    IARG_INST_PTR, IARG_UINT32, INS_Category(ins),
+                    IARG_UINT32, INS_Opcode(ins),
+                    IARG_MEMORYOP_EA, memOp,
+                    IARG_UINT32, INS_MemoryOperandSize(ins, memOp),
+                    IARG_END);
+            }
+        }
+
     } else {
         // Handle memory I/O to check for taint propogation
         //
