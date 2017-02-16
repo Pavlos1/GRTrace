@@ -7,6 +7,7 @@
 #include <set>
 #include "pin.H"
 
+//#define SECURITY_MODE
 #define __MIN(a, b) ((a) < (b) ? (a) : (b))
 
 enum SyscallRetHandler {
@@ -32,6 +33,71 @@ std::set<int> * operand_taints = new std::set<int>();
 
 REG standardize_reg(REG reg) {
     return REG_FullRegName(reg);
+}
+
+// If %RIP is tainted, then all subsequent memory/register
+// writes should propogate this taint, as a means of encoding
+// information about branching.
+VOID prop_rip_taint_to_reg(REG reg) {
+    if ((reg_taints->find(REG_INST_PTR) != reg_taints->end())
+        && ((*reg_taints)[REG_INST_PTR] != NULL)) {
+
+            if ((reg_taints->find(reg) == reg_taints->end())
+                || ((*reg_taints)[reg] == NULL)) {
+
+                    (*reg_taints)[reg] = new std::set<int>();
+            }
+
+            for (auto offset : *((*reg_taints)[REG_INST_PTR])) {
+                (*reg_taints)[reg]->insert(offset);
+            }
+
+    }
+}
+
+VOID prop_rip_taint_to_mem(ADDRINT mem) {
+    if ((reg_taints->find(REG_INST_PTR) != reg_taints->end())
+        && ((*reg_taints)[REG_INST_PTR] != NULL)) {
+
+            if ((taints->find(mem) == taints->end())
+                || ((*taints)[mem] == NULL)) {
+
+                    (*taints)[mem] = new std::set<int>();
+            }
+
+            for (auto offset : *((*reg_taints)[REG_INST_PTR])) {
+                (*taints)[mem]->insert(offset);
+            }   
+
+    }
+}
+
+VOID check_rip_taint(VOID * ins_ptr) {
+    if ((reg_taints->find(REG_INST_PTR) != reg_taints->end())
+        && ((*reg_taints)[REG_INST_PTR] != NULL)
+            && (!(*reg_taints)[REG_INST_PTR]->empty())) {
+
+        fprintf(stderr, "Instruction pointer (%p) is tainted by: ", ins_ptr);
+        for (auto offset : *((*reg_taints)[REG_INST_PTR])) {
+            fprintf(stderr, "%d ", offset);
+        }
+        fprintf(stderr, "\nTerminating program as a result.\n");
+
+        exit(1);
+    }
+
+    if ((taints->find((ADDRINT) ins_ptr) != taints->end())
+        && ((*taints)[(ADDRINT) ins_ptr] != NULL)
+            && (!((*taints)[(ADDRINT) ins_ptr]->empty()))) {
+
+        fprintf(stderr, "Instruction @ %p is tainted by: ", ins_ptr);
+        for (auto offset : *((*taints)[(ADDRINT) ins_ptr])) {
+            fprintf(stderr, "%d", offset);
+        }
+        fprintf(stderr, "\nTerminating program as a result.\n");
+
+        exit(1);
+    }
 }
 
 char * getbasename(char * in) {
@@ -114,6 +180,7 @@ VOID record_ins_syscall_before(VOID * ins_ptr, ADDRINT number,
 
                     // We're overwriting, so remove previous taint
                     (*taints)[arg1 + i]->clear();
+                    prop_rip_taint_to_mem(arg1 + i);
                     (*taints)[arg1 + i]->insert(curr + i);
                 }
 
@@ -214,6 +281,7 @@ VOID record_ins_syscall_after(VOID * ins_ptr, ADDRINT ret) {
                         }
 
                         (*taints)[mem]->insert(offset);
+                        prop_rip_taint_to_mem(mem);
                     }
                 }
 
@@ -225,17 +293,40 @@ VOID record_ins_syscall_after(VOID * ins_ptr, ADDRINT ret) {
 
 VOID clear_operand_taints(VOID * ins_ptr) {
     operand_taints->clear();
+
+    // Propogate %RIP taint to the operand_taints,
+    // since effectively everything written will
+    // depend on the value of the program counter.
+    if ((reg_taints->find(REG_INST_PTR) != reg_taints->end())
+        && ((*reg_taints)[REG_INST_PTR] != NULL)) {
+            for (auto offset : *((*reg_taints)[REG_INST_PTR])) {
+                operand_taints->insert(offset);
+            }
+        }
 }
 
 VOID clear_reg_taint(VOID * ins_ptr, REG reg) {
     reg = standardize_reg(reg);
 
-    if (reg_taints->find(reg) != reg_taints->end()) {
-        if ((*reg_taints)[reg] != NULL) {
-            delete (*reg_taints)[reg];
-        }
+    if ((reg_taints->find(REG_INST_PTR) != reg_taints->end()) 
+        && ((*reg_taints)[REG_INST_PTR] != NULL)
+            && !((*reg_taints)[REG_INST_PTR]->empty())) {
 
-        reg_taints->erase(reg);
+        if ((reg_taints->find(reg) == reg_taints->end())
+            || ((*reg_taints)[reg] == NULL)) {
+
+            (*reg_taints)[reg] = new std::set<int>();
+        }
+        prop_rip_taint_to_reg(reg);
+
+    } else {
+        if (reg_taints->find(reg) != reg_taints->end()) {
+            if ((*reg_taints)[reg] != NULL) {
+                delete (*reg_taints)[reg];
+            }
+
+            reg_taints->erase(reg);
+        }
     }
 }
 
@@ -261,7 +352,12 @@ VOID record_ins_reg_read(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
         exit(1);
     }
 
-    // TODO: Figure out how to deal with GFLAGS/branching
+    #ifdef SECURITY_MODE
+    // If we are only interested in taint tracing for security purposes
+    // (i.e. findiung exploits etc), then we do not consider the instruction
+    // pointer tainted when a conditional jump reads from RFLAGS
+    if ((category == XED_CATEGORY_COND_BR) && (reg == REG_GFLAGS)) return;
+    #endif
 
     // If instruction is PUSH/POP/CALL/RET, we don't want to propagate the RSP
     // taint, since E/RSP has no impact on the value pushed to the stack
@@ -377,13 +473,17 @@ VOID record_ins_xchg_reg_reg(VOID * ins_ptr, CATEGORY category,
                 (*reg_taints)[REG_GFLAGS]->insert(offset);
             }
         }
+
+        prop_rip_taint_to_reg(REG_GFLAGS);
     }
 
-    if (reg_taints->find(reg1) == reg_taints->end()) {
-        if (reg_taints->find(reg2) != reg_taints->end()) {
-            (*reg_taints)[reg1] = (*reg_taints)[reg2];
-        }
-        reg_taints->erase(reg2);
+    if ((reg_taints->find(reg1) == reg_taints->end())
+        || ((*reg_taints)[reg1] == NULL)) {
+            if ((reg_taints->find(reg2) != reg_taints->end())
+                && ((*reg_taints)[reg2] != NULL)) {
+                    (*reg_taints)[reg1] = (*reg_taints)[reg2];
+            }
+            reg_taints->erase(reg2);
     } else {
         std::set<int> * tmp = (*reg_taints)[reg1];
         if (reg_taints->find(reg2) == reg_taints->end()) {
@@ -393,6 +493,9 @@ VOID record_ins_xchg_reg_reg(VOID * ins_ptr, CATEGORY category,
         }
         (*reg_taints)[reg2] = tmp;
     }
+
+    prop_rip_taint_to_reg(reg1);
+    prop_rip_taint_to_reg(reg2);
 }
 
 VOID record_ins_xchg_reg_mem(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
@@ -438,7 +541,19 @@ VOID record_ins_xchg_reg_mem(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
         delete tmp;
     }
 
+    prop_rip_taint_to_reg(reg);
+    for (ADDRINT _mem = (ADDRINT) mem;
+            _mem < (ADDRINT) mem + size; _mem++) {
+                prop_rip_taint_to_mem(_mem);
+    }
+
 }
+
+// Note: For the XADD handlers, the relevant %RIP-taint handling
+// should already be done by the XCHG handler, which is called
+// as a procedure.
+// The exception to this is %RFLAGS, which is untouched by the
+// XCHG handler.
 
 VOID record_ins_xadd_reg_reg(VOID * ins_ptr, CATEGORY category,
     OPCODE opcode, REG reg1, REG reg2) {
@@ -470,6 +585,7 @@ VOID record_ins_xadd_reg_reg(VOID * ins_ptr, CATEGORY category,
             (*reg_taints)[REG_GFLAGS] = new std::set<int>();
         } else {
             (*reg_taints)[REG_GFLAGS]->clear();
+            prop_rip_taint_to_reg(REG_GFLAGS);
         }
 
         for (auto offset : *((*reg_taints)[reg2])) {
@@ -515,6 +631,7 @@ VOID record_ins_xadd_reg_mem(VOID * ins_ptr, CATEGORY category, OPCODE opcode,
             (*reg_taints)[REG_GFLAGS] = new std::set<int>();
         } else {
             (*reg_taints)[REG_GFLAGS]->clear();
+            prop_rip_taint_to_reg(REG_GFLAGS);
         }
 
         for (ADDRINT _mem = (ADDRINT) mem;
@@ -556,6 +673,11 @@ VOID SyscallExit(THREADID threadIndex, CONTEXT *ctxt, SYSCALL_STANDARD std,
 }
 
 VOID Instruction(INS ins, VOID * v) {
+    #ifdef SECURITY_MODE
+    INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR) check_rip_taint,
+        IARG_INST_PTR, IARG_END);
+    #endif
+
     // Handle SYSCALL/0x80 interrupt to check for I/O taints originating
     // from the target file
     if (INS_IsSyscall(ins)) {
