@@ -23,7 +23,7 @@ Alternatively, you can specify the parser and input file:
 ./run parsers/bin/asm_branch_taint tests/pdf_valid.pdf
 ```
 
-If you wish to run `parsers/mupdf_verify`, you will need to install
+If you wish to run `parsers/bin/mupdf_verify`, you will need to install
 [libmupdf](http://mupdf.com). Also, you will need to compile it separately with
 `cd parsers; make bin/verify_mupdf; cd ..` since I still cannot figure out how
 to get libmupdf stuff to compile.
