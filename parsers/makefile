@@ -13,8 +13,8 @@ clean:
 	rm -f bin/*
 
 bin/verify_mupdf: verify_mupdf.c
-	$(CC) $^ -o $@ -lmupdf -lfreetype -ljbig2dec -ljpeg -lopenjpeg \
-		-lz -lcrypto -lm -lharfbuzz
+	$(CC) $^ -o $@ -lmupdf -lmupdfthird -lfreetype -ljbig2dec -ljpeg \
+		-lopenjpeg -lopenjp2 -lz -lcrypto -lm -lharfbuzz
 
 bin/%: %.c
 	$(CC) $^ -o $@
