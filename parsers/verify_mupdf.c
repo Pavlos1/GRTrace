@@ -45,14 +45,26 @@ int main(int argc, char **argv)
 		exit(-1);
 	}
 
+    FILE * fp = fopen(input, "r");
+    if (!fp)
+    {
+        fprintf(stderr, "FATAL: File doesn't exist: %s.\n", input);
+        fz_drop_context(ctx);
+        exit(-1);
+    }
+    else
+    {
+        fclose(fp);
+    }
+
 	/* Open the document. */
 	fz_try(ctx)
 		doc = fz_open_document(ctx, input);
 	fz_catch(ctx)
 	{
-		fprintf(stderr, "FATAL: Cannot open document: %s.\n", fz_caught_message(ctx));
+		fprintf(stderr, "Parse error on opening document: %s.\n", fz_caught_message(ctx));
 		fz_drop_context(ctx);
-		exit(-1);
+		exit(1);
 	}
 
 	/* Count the number of pages. */
