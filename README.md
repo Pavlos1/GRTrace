@@ -1,5 +1,4 @@
 # GRTrace
-## TODO: Think of better title
 
 A utility for producing a taint trace by instrumenting an x86 binary
 with Intel's PIN tool. Presented at the Fifth Trustworthy Systems
@@ -16,7 +15,7 @@ GRTrace's parent directory. Do not rename the extracted folder. Then, run:
 ```
 
 This will trace the execution of ghostscript on a sample PDF file.
-Alternatively, you can specify the parser and input file.
+Alternatively, you can specify the parser and input file:
 
 ```bash
 ./run $PARSER $FILE
@@ -25,6 +24,6 @@ Alternatively, you can specify the parser and input file.
 ```
 
 If you wish to run `parsers/mupdf_verify`, you will need to install
-[libmupdf](http://mupdf.com). Also, you will need to compile is separately with
+[libmupdf](http://mupdf.com). Also, you will need to compile it separately with
 `cd parsers; make bin/verify_mupdf; cd ..` since I still cannot figure out how
 to get libmupdf stuff to compile.
