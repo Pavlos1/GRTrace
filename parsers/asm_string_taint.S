@@ -32,6 +32,19 @@ _start:
     movq $4, %rcx # 4 times
     repnz movsb
 
+    # Same as above, but with 4-byte moves
+    movq $0, %rax
+    movq fd, %rdi
+    lea  v9, %rsi
+    movq $16, %rdx
+    syscall
+
+    lea v9,  %rsi
+    lea v13, %rdi
+    cld
+    movq $4, %rcx
+    repnz movsd
+
     # Close the file
     movq $3, %rax
     movq fd, %rdi
@@ -56,3 +69,12 @@ v5: .skip 1
 v6: .skip 1
 v7: .skip 1
 v8: .skip 1
+
+v9:  .skip 4
+v10: .skip 4
+v11: .skip 4
+v12: .skip 4
+v13: .skip 4
+v14: .skip 4
+v15: .skip 4
+v16: .skip 4
